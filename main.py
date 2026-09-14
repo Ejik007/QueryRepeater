@@ -1,10 +1,30 @@
+import os
 from contextlib import asynccontextmanager
-from typing import List
+from typing import List, Optional
 import httpx
-from fastapi import FastAPI, HTTPException, Path, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
+
+API_KEY = os.getenv("API_KEY", "").strip()
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def require_api_key(
+    header_key: Optional[str] = Security(api_key_header),
+    query_key: Optional[str] = Query(default=None, alias="api_key"),
+) -> None:
+    """API-key guard. If API_KEY env is empty -> open mode (local dev)."""
+    if not API_KEY:
+        return
+    if header_key == API_KEY or query_key == API_KEY:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"error": "Unauthorized", "message": "Неверный или отсутствующий X-API-Key"},
+    )
 from leasing_client import (
     DonorStructureChangedError,
     InvalidINNError,
@@ -101,8 +121,10 @@ async def health_check():
     "/health/canary",
     tags=["Service"],
     summary="Проверка целостности верстки и кода сайта-донора (Canary Self-Test)",
+    dependencies=[Depends(require_api_key)],
     responses={
         200: {"description": "Сайт-донор доступен и отдает корректные данные"},
+        401: {"model": ErrorResponse, "description": "Неверный API-ключ"},
         502: {"model": ErrorResponse, "description": "Код или структура ответа сайта-донора изменилась"},
     },
 )
@@ -125,7 +147,9 @@ async def canary_health_check():
 @app.get(
     "/api/v1/leasing/{inn}",
     response_model=LeasingResponse,
+    dependencies=[Depends(require_api_key)],
     responses={
+        401: {"model": ErrorResponse, "description": "Неверный API-ключ"},
         400: {"model": ErrorResponse, "description": "Некорректный ИНН"},
         502: {"model": ErrorResponse, "description": "Структура или код сайта-донора изменился"},
         503: {"model": ErrorResponse, "description": "Сайт-донор недоступен"},
@@ -165,6 +189,7 @@ async def get_leasing_by_inn(
 @app.get(
     "/api/v1/leasing/{inn}/contracts",
     response_model=List[ContractItem],
+    dependencies=[Depends(require_api_key)],
     tags=["Leasing"],
     summary="Получить только список договоров лизинга по ИНН",
 )
@@ -179,6 +204,7 @@ async def get_contracts_by_inn(
 @app.get(
     "/api/v1/leasing/{inn}/summary",
     response_model=List[SummaryItem],
+    dependencies=[Depends(require_api_key)],
     tags=["Leasing"],
     summary="Получить только сводку по лизинговым компаниям по ИНН",
 )

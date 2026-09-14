@@ -1,4 +1,6 @@
-fastapi>=0.100.0
-uvicorn[standard]>=0.22.0
+# Minimal footprint: plain uvicorn (no uvloop/httptools/watchfiles) saves ~15-25 MB RAM.
+# Service is network-bound (0.3-0.4s donor calls), asyncio+h11 is enough.
+fastapi>=0.100.0,<1.0.0
+uvicorn>=0.22.0
 httpx>=0.24.0
 pydantic>=2.0.0
