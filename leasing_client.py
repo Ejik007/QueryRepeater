@@ -226,28 +226,41 @@ class LeasingAnalyticsClient:
         if not isinstance(raw_summary, list):
             raise DonorStructureChangedError(f"Ключ 'lease_all' должен быть списком, получено: {type(raw_summary)}")
 
-        # Normalize contract data
+        # Normalize contract data.
+        # Donor may return null / numbers for some fields (seen on INN 7707049388),
+        # so every value goes through null-safe _s() instead of raw .strip().
+        def _s(value: Any) -> str:
+            if value is None:
+                return ""
+            return str(value).strip()
+
+        def _count(value: Any) -> int:
+            digits = "".join(ch for ch in _s(value) if ch.isdigit())
+            return int(digits) if digits else 0
+
         cleaned_contracts = [
             {
-                "contract_number": item.get("dogovor", "").strip(),
-                "period_start": item.get("period_start", "").strip(),
-                "period_end": item.get("period_end", "").strip(),
-                "leasing_company": item.get("name_lk", "").strip(),
-                "category": item.get("class", "").strip(),
-                "subject": item.get("total", "").strip(),
-                "url_hash": item.get("url", "").strip(),
-                "brand": item.get("marka", "").strip(),
-                "model": item.get("model", "").strip(),
+                "contract_number": _s(item.get("dogovor")),
+                "period_start": _s(item.get("period_start")),
+                "period_end": _s(item.get("period_end")),
+                "leasing_company": _s(item.get("name_lk")),
+                "category": _s(item.get("class")),
+                "subject": _s(item.get("total")),
+                "url_hash": _s(item.get("url")),
+                "brand": _s(item.get("marka")),
+                "model": _s(item.get("model")),
             }
             for item in raw_contracts
+            if isinstance(item, dict)
         ]
 
         cleaned_summary = [
             {
-                "leasing_company": item.get("name", "").strip(),
-                "contracts_count": int(item.get("kolvo", 0)) if str(item.get("kolvo", "")).isdigit() else 0,
+                "leasing_company": _s(item.get("name")),
+                "contracts_count": _count(item.get("kolvo")),
             }
             for item in raw_summary
+            if isinstance(item, dict)
         ]
 
         return {
